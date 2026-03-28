@@ -9,14 +9,29 @@ from datetime import datetime
 from functools import wraps
 import zipfile
 from io import BytesIO
+from pathlib import Path  # Add this import
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this'
-app.config['UPLOAD_FOLDER'] = 'static/uploads'
-app.config['WATERMARK_FOLDER'] = 'static/watermarked'
-app.config['DOWNLOAD_FOLDER'] = 'static/downloads'
+
+# === ENSURE DIRECTORIES EXIST ON STARTUP (FOR RENDER) ===
+BASE_DIR = Path(__file__).parent.absolute()
+
+app.config['UPLOAD_FOLDER'] = str(BASE_DIR / 'static/uploads')
+app.config['WATERMARK_FOLDER'] = str(BASE_DIR / 'static/watermarked')
+app.config['DOWNLOAD_FOLDER'] = str(BASE_DIR / 'static/downloads')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size per upload
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'heic'}
+
+# Create directories if they don't exist
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['WATERMARK_FOLDER'], exist_ok=True)
+os.makedirs(app.config['DOWNLOAD_FOLDER'], exist_ok=True)
+
+print(f"✅ Upload folder: {app.config['UPLOAD_FOLDER']}")
+print(f"✅ Watermark folder: {app.config['WATERMARK_FOLDER']}")
+print(f"✅ Download folder: {app.config['DOWNLOAD_FOLDER']}")
+# =====================================================
 
 # Database setup
 def init_db():
@@ -616,10 +631,26 @@ def download_all(token):
         return redirect(url_for('customer_view', token=token))
 
 if __name__ == '__main__':
-    # Ensure directories exist
+    # Ensure directories exist with absolute paths
+    import os
+    from pathlib import Path
+    
+    # Convert to absolute paths
+    BASE_DIR = Path(__file__).parent.absolute()
+    
+    # Update config with absolute paths
+    app.config['UPLOAD_FOLDER'] = str(BASE_DIR / 'static/uploads')
+    app.config['WATERMARK_FOLDER'] = str(BASE_DIR / 'static/watermarked')
+    app.config['DOWNLOAD_FOLDER'] = str(BASE_DIR / 'static/downloads')
+    
+    # Create directories
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['WATERMARK_FOLDER'], exist_ok=True)
     os.makedirs(app.config['DOWNLOAD_FOLDER'], exist_ok=True)
+    
+    print(f"✅ Upload folder: {app.config['UPLOAD_FOLDER']}")
+    print(f"✅ Watermark folder: {app.config['WATERMARK_FOLDER']}")
+    print(f"✅ Download folder: {app.config['DOWNLOAD_FOLDER']}")
     
     # Initialize database
     init_db()
