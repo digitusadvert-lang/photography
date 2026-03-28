@@ -16,19 +16,18 @@
         .selection-count { font-size: 1rem; font-weight: 600; color: #2c3e50; }
         .selection-cost { font-size: 0.95rem; color: #667eea; font-weight: 600; }
         .photo-card.selected-card { outline: 3px solid #667eea; transform: translateY(-4px); }
-        .photo-card.selected-card .select-overlay { background: rgba(102,126,234,0.15); }
-        .select-overlay {
-            position: absolute; inset: 0; display: flex;
-            align-items: flex-end; justify-content: flex-end;
-            padding: 0.5rem; cursor: pointer;
-        }
-        .select-tick {
-            width: 32px; height: 32px; border-radius: 50%;
-            background: white; border: 2px solid #ccc;
+        .photo-card.selected-card .photo-wrapper { background: rgba(102,126,234,0.08); }
+        /* Tick button — only bottom-right corner, not full overlay */
+        .select-tick-btn {
+            position: absolute; bottom: 8px; right: 8px;
+            width: 34px; height: 34px; border-radius: 50%;
+            background: rgba(255,255,255,0.92); border: 2px solid #ccc;
             display: flex; align-items: center; justify-content: center;
-            font-size: 1.1rem; transition: all 0.2s;
+            font-size: 1.1rem; cursor: pointer; z-index: 10;
+            transition: all 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
         }
-        .photo-card.selected-card .select-tick {
+        .select-tick-btn:hover { transform: scale(1.1); border-color: #667eea; }
+        .photo-card.selected-card .select-tick-btn {
             background: #667eea; border-color: #667eea; color: white;
         }
         .submitted-banner {
@@ -36,7 +35,15 @@
             padding: 1.25rem 2rem; border-radius: 8px; margin-bottom: 1.5rem;
             font-weight: 500;
         }
-        .photo-wrapper { cursor: pointer; }
+        .photo-wrapper { cursor: zoom-in; }
+        /* Lightbox select button */
+        #lightbox-select-btn {
+            padding: 0.6rem 1.5rem; border-radius: 8px; border: 2px solid white;
+            background: transparent; color: white; font-size: 0.95rem;
+            cursor: pointer; font-weight: 600; transition: all 0.2s;
+        }
+        #lightbox-select-btn:hover { background: white; color: #333; }
+        #lightbox-select-btn.is-selected { background: #667eea; border-color: #667eea; }
     </style>
 </head>
 <body class="customer-view">
@@ -109,10 +116,9 @@
                             <img src="{{ url_for('static', filename=photo['watermarked_path'].replace('\\', '/').replace('static/', '')) }}"
                                  alt="Photo {{ photo['photo_number'] or loop.index }}">
                             {% if not submitted %}
-                            <div class="select-overlay" onclick="event.stopPropagation(); toggleSelect({{ photo['id'] }})">
-                                <div class="select-tick" id="tick-{{ photo['id'] }}">
-                                    {% if photo['selected'] %}✓{% endif %}
-                                </div>
+                            <div class="select-tick-btn" id="tick-{{ photo['id'] }}"
+                                 onclick="event.stopPropagation(); toggleSelect({{ photo['id'] }})">
+                                {% if photo['selected'] %}✓{% endif %}
                             </div>
                             {% endif %}
                         </div>
@@ -145,14 +151,17 @@
     </div>
 
     <!-- Lightbox -->
-    <div id="lightbox" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:9999; align-items:center; justify-content:center;">
-        <button onclick="closeLightbox()" style="position:absolute; top:1rem; right:1.5rem; background:none; border:none; color:white; font-size:2.5rem; cursor:pointer;">&times;</button>
-        <button onclick="prevPhoto()" style="position:absolute; left:1rem; background:rgba(255,255,255,0.15); border:none; color:white; font-size:2rem; cursor:pointer; padding:0.75rem 1rem; border-radius:8px;">&#8249;</button>
-        <div style="max-width:90vw; max-height:90vh; display:flex; flex-direction:column; align-items:center; gap:0.75rem;">
-            <img id="lightbox-img" src="" alt="" style="max-width:90vw; max-height:82vh; object-fit:contain; border-radius:4px;">
+    <div id="lightbox" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:9999; align-items:center; justify-content:center; flex-direction:column;">
+        <button onclick="closeLightbox()" style="position:absolute; top:1rem; right:1.5rem; background:none; border:none; color:white; font-size:2.5rem; cursor:pointer; line-height:1;">&times;</button>
+        <button onclick="prevPhoto()" style="position:absolute; left:1rem; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.15); border:none; color:white; font-size:2rem; cursor:pointer; padding:0.75rem 1rem; border-radius:8px;">&#8249;</button>
+        <img id="lightbox-img" src="" alt="" style="max-width:90vw; max-height:78vh; object-fit:contain; border-radius:4px; box-shadow:0 8px 40px rgba(0,0,0,0.6);">
+        <div style="display:flex; align-items:center; gap:1.5rem; margin-top:1rem;">
             <span id="lightbox-counter" style="color:rgba(255,255,255,0.7); font-size:0.95rem;"></span>
+            {% if not session['selection_submitted'] %}
+            <button id="lightbox-select-btn" onclick="toggleSelectFromLightbox()">Select this photo</button>
+            {% endif %}
         </div>
-        <button onclick="nextPhoto()" style="position:absolute; right:1rem; background:rgba(255,255,255,0.15); border:none; color:white; font-size:2rem; cursor:pointer; padding:0.75rem 1rem; border-radius:8px;">&#8250;</button>
+        <button onclick="nextPhoto()" style="position:absolute; right:1rem; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.15); border:none; color:white; font-size:2rem; cursor:pointer; padding:0.75rem 1rem; border-radius:8px;">&#8250;</button>
     </div>
 
     <script>
@@ -167,6 +176,14 @@
             {% for photo in photos %}
             "{{ url_for('static', filename=photo['watermarked_path'].replace('\\', '/').replace('static/', '')) }}"{% if not loop.last %},{% endif %}
             {% endfor %}
+        ];
+
+        const photoIds = [
+            {% for photo in photos %}{{ photo['id'] }}{% if not loop.last %},{% endif %}{% endfor %}
+        ];
+
+        const photoNums = [
+            {% for photo in photos %}{{ photo['photo_number'] or loop.index }}{% if not loop.last %},{% endif %}{% endfor %}
         ];
 
         // Track selections
@@ -215,11 +232,41 @@
 
         // Lightbox
         let current = 0;
-        function openLightbox(i) { current = i; showPhoto(); document.getElementById('lightbox').style.display = 'flex'; document.body.style.overflow = 'hidden'; }
-        function closeLightbox() { document.getElementById('lightbox').style.display = 'none'; document.body.style.overflow = ''; }
-        function showPhoto() { document.getElementById('lightbox-img').src = photoSrcs[current]; document.getElementById('lightbox-counter').textContent = (current+1) + ' / ' + photoSrcs.length; }
+        function openLightbox(i) {
+            current = i;
+            showPhoto();
+            document.getElementById('lightbox').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+        function closeLightbox() {
+            document.getElementById('lightbox').style.display = 'none';
+            document.body.style.overflow = '';
+        }
+        function showPhoto() {
+            document.getElementById('lightbox-img').src = photoSrcs[current];
+            document.getElementById('lightbox-counter').textContent =
+                'Photo #' + photoNums[current] + '  (' + (current+1) + ' / ' + photoSrcs.length + ')';
+            const btn = document.getElementById('lightbox-select-btn');
+            if (btn) {
+                const isSelected = selected.has(photoIds[current]);
+                btn.textContent = isSelected ? '✓ Selected' : 'Select this photo';
+                btn.className = isSelected ? 'is-selected' : '';
+            }
+        }
         function prevPhoto() { current = (current - 1 + photoSrcs.length) % photoSrcs.length; showPhoto(); }
         function nextPhoto() { current = (current + 1) % photoSrcs.length; showPhoto(); }
+        function toggleSelectFromLightbox() {
+            toggleSelect(photoIds[current]);
+            // Update button after a short delay (wait for fetch)
+            setTimeout(() => {
+                const btn = document.getElementById('lightbox-select-btn');
+                if (btn) {
+                    const isSelected = selected.has(photoIds[current]);
+                    btn.textContent = isSelected ? '✓ Selected' : 'Select this photo';
+                    btn.className = isSelected ? 'is-selected' : '';
+                }
+            }, 300);
+        }
         document.addEventListener('keydown', e => {
             if (document.getElementById('lightbox').style.display === 'none') return;
             if (e.key === 'Escape') closeLightbox();

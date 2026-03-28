@@ -93,6 +93,8 @@ def init_db():
     _add_col('sessions', 'deposit_paid', 'REAL DEFAULT 0')
     _add_col('sessions', 'selection_submitted', 'INTEGER DEFAULT 0')
     _add_col('sessions', 'submitted_at', 'TIMESTAMP')
+    _add_col('sessions', 'payment_submitted', 'INTEGER DEFAULT 0')
+    _add_col('sessions', 'payment_submitted_at', 'TIMESTAMP')
     _add_col('photos', 'selected', 'INTEGER DEFAULT 0')
     _add_col('photos', 'photo_number', 'INTEGER')
     _add_col('photographer', 'bank_name', 'TEXT')
@@ -736,6 +738,21 @@ def invoice(token):
     return render_template('invoice.html', session=session, selected_photos=selected_photos,
                            pg=pg, n=n, included=included, extra=extra,
                            extra_cost=extra_cost, total=total, balance_due=balance_due)
+
+
+@app.route('/view/<token>/mark_paid', methods=['POST'])
+def mark_paid(token):
+    conn = sqlite3.connect('photographer.db')
+    c = conn.cursor()
+    c.execute("SELECT id FROM sessions WHERE access_token = ?", (token,))
+    session = c.fetchone()
+    if session:
+        c.execute("UPDATE sessions SET payment_submitted = 1, payment_submitted_at = ? WHERE access_token = ?",
+                  (datetime.now(), token))
+        conn.commit()
+    conn.close()
+    return redirect(url_for('customer_view', token=token))
+
 
 @app.route('/download/<int:photo_id>')
 def download_photo(photo_id):

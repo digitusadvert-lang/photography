@@ -1,0 +1,9 @@
+photographer.db
+static/uploads/*
+static/watermarked/*
+static/downloads/*
+static/qr/*
+__pycache__/
+*.pyc
+*.pyo
+.env

@@ -36,14 +36,8 @@
         .cost-table .deposit-row td { color:#27ae60; }
         .cost-table .balance-row td { color:#e74c3c; font-size:1.15rem; font-weight:700; }
 
-        .payment-section { display:grid; grid-template-columns:1fr auto; gap:2rem;
-                           align-items:start; margin-top:0.5rem; }
         .bank-info p { margin-bottom:0.4rem; font-size:0.95rem; }
         .bank-info strong { color:#2c3e50; }
-        .qr-box { text-align:center; }
-        .qr-box img { max-width:150px; max-height:150px; border-radius:8px;
-                      border:1px solid #e0e6ed; }
-        .qr-box p { font-size:0.75rem; color:#7f8c8d; margin-top:0.4rem; }
 
         .footer-note { background:#fff8e1; border:1px solid #ffe082; border-radius:8px;
                        padding:1rem 1.25rem; margin-top:2rem; font-size:0.9rem; color:#7b6012; }
@@ -119,35 +113,62 @@
         <!-- Payment Details -->
         {% if pg and (pg['bank_name'] or pg['tng_qr_path']) %}
         <div class="section-title">Payment Details</div>
-        <div class="payment-section">
-            <div class="bank-info">
-                {% if pg['bank_name'] %}
-                    <p><strong>Bank:</strong> {{ pg['bank_name'] }}</p>
-                {% endif %}
-                {% if pg['bank_holder'] %}
-                    <p><strong>Account Name:</strong> {{ pg['bank_holder'] }}</p>
-                {% endif %}
-                {% if pg['bank_account'] %}
-                    <p><strong>Account No:</strong> {{ pg['bank_account'] }}</p>
-                {% endif %}
-                <p style="margin-top:1rem; font-size:0.85rem; color:#7f8c8d;">
-                    Please transfer <strong style="color:#e74c3c;">RM {{ "%.2f"|format(balance_due) }}</strong>
-                    and WhatsApp your photographer once payment is done.
-                </p>
-            </div>
-            {% if pg['tng_qr_path'] %}
-            <div class="qr-box">
-                <img src="{{ url_for('static', filename=pg['tng_qr_path'].replace('static/', '')) }}"
-                     alt="Touch & Go QR">
-                <p>Touch & Go QR</p>
-            </div>
+
+        <!-- Bank Info -->
+        <div class="bank-info" style="margin-bottom:1.5rem;">
+            {% if pg['bank_name'] %}
+                <p><strong>Bank:</strong> {{ pg['bank_name'] }}</p>
             {% endif %}
+            {% if pg['bank_holder'] %}
+                <p><strong>Account Name:</strong> {{ pg['bank_holder'] }}</p>
+            {% endif %}
+            {% if pg['bank_account'] %}
+                <p><strong>Account No:</strong> {{ pg['bank_account'] }}</p>
+            {% endif %}
+            <p style="margin-top:1rem; font-size:0.85rem; color:#7f8c8d;">
+                Please transfer <strong style="color:#e74c3c;">RM {{ "%.2f"|format(balance_due) }}</strong>
+                and WhatsApp your photographer once payment is done.
+            </p>
         </div>
+
+        <!-- TnG QR — full width, scannable -->
+        {% if pg['tng_qr_path'] %}
+        <div style="text-align:center; margin-top:0.5rem;">
+            <p style="font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; color:#7f8c8d; margin-bottom:0.75rem;">Touch &amp; Go QR Code</p>
+            <img src="{{ url_for('static', filename=pg['tng_qr_path'].replace('static/', '')) }}"
+                 alt="Touch & Go QR"
+                 style="width:280px; height:280px; object-fit:contain; border-radius:8px; border:1px solid #e0e6ed;">
+            <p style="font-size:0.8rem; color:#7f8c8d; margin-top:0.5rem;">Scan to pay via Touch &amp; Go</p>
+        </div>
+        {% endif %}
+
         {% endif %}
 
         <div class="footer-note">
             After payment, WhatsApp your photographer with proof of payment. Your photos will be
             approved for download once payment is verified.
+        </div>
+
+        <!-- Paid / Back buttons -->
+        <div class="no-print" style="display:flex; gap:1rem; margin-top:2rem; justify-content:center; flex-wrap:wrap;">
+            {% if session['payment_submitted'] %}
+                <div style="background:#d4edda; border:1px solid #c3e6cb; color:#155724;
+                            padding:0.75rem 1.5rem; border-radius:8px; font-weight:600; text-align:center;">
+                    ✅ Payment marked as done — waiting for photographer verification
+                </div>
+            {% else %}
+                <form method="POST" action="/view/{{ session['access_token'] }}/mark_paid">
+                    <button type="submit" style="padding:0.85rem 2rem; background:#27ae60; color:white;
+                            border:none; border-radius:8px; font-size:1rem; font-weight:600; cursor:pointer;">
+                        ✅ I Have Paid
+                    </button>
+                </form>
+            {% endif %}
+            <a href="/view/{{ session['access_token'] }}"
+               style="padding:0.85rem 2rem; background:#667eea; color:white; border-radius:8px;
+                      font-size:1rem; font-weight:600; text-decoration:none; text-align:center;">
+                ← Back to My Photos
+            </a>
         </div>
 
     </div>
