@@ -112,6 +112,9 @@ def init_db():
     conn.commit()
     conn.close()
 
+# Run on startup regardless of how the app is launched (gunicorn or direct)
+init_db()
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
