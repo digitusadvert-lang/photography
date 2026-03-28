@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ session['session_name'] }} - Your Photos</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="customer-view">
+    <div class="customer-header">
+        <h1>📸 {{ session['session_name'] }}</h1>
+        <p class="welcome-text">Welcome, {{ session['customer_name'] }}!</p>
+    </div>
+    
+    <div class="container">
+        <div class="customer-info-box">
+            <h2>Your Photo Gallery</h2>
+            <p>Your photographer has uploaded {{ photos|length }} photo{% if photos|length != 1 %}s{% endif %} for you to review.</p>
+            <div class="status-info">
+                {% set approved_count = photos|selectattr('approved', 'equalto', 1)|list|length %}
+                <p><strong>{{ approved_count }}</strong> of <strong>{{ photos|length }}</strong> photos are approved for download.</p>
+                
+                {% if approved_count > 0 %}
+                    <a href="{{ url_for('download_all', token=session['access_token']) }}" 
+                       class="btn btn-primary download-all-btn">
+                        📦 Download All Approved Photos (ZIP)
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+        
+        {% if photos %}
+            <div class="photos-grid customer-grid">
+                {% for photo in photos %}
+                    <div class="photo-card customer-photo">
+                        <div class="photo-wrapper" onclick="openLightbox({{ loop.index0 }})" style="cursor:zoom-in;">
+                            <img src="{{ url_for('static', filename=photo['watermarked_path'].replace('\\', '/').replace('static/', '')) }}"
+                                 alt="Photo {{ loop.index }}">
+                            {% if photo['approved'] != 1 %}
+                                <div class="watermark-overlay">
+                                    <span class="pending-badge">Pending Approval</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="photo-info customer-photo-info">
+                            <p class="photo-number">Photo {{ loop.index }}</p>
+                            {% if photo['approved'] == 1 %}
+                                <a href="{{ url_for('download_photo', photo_id=photo['id']) }}" 
+                                   class="btn btn-success btn-download" download>
+                                    ⬇ Download Original
+                                </a>
+                            {% else %}
+                                <button class="btn btn-disabled" disabled>
+                                    🔒 Download Not Available
+                                </button>
+                                <p class="help-text">Waiting for photographer approval</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <p>No photos have been uploaded yet. Please check back later!</p>
+            </div>
+        {% endif %}
+        
+        <div class="customer-footer">
+            <p>Questions? Contact your photographer directly.</p>
+        </div>
+    </div>
+
+    <!-- Lightbox Modal -->
+    <div id="lightbox" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:9999; align-items:center; justify-content:center;">
+        <button onclick="closeLightbox()" style="position:absolute; top:1rem; right:1.5rem; background:none; border:none; color:white; font-size:2.5rem; cursor:pointer; line-height:1;">&times;</button>
+        <button onclick="prevPhoto()" style="position:absolute; left:1rem; background:rgba(255,255,255,0.15); border:none; color:white; font-size:2rem; cursor:pointer; padding:0.75rem 1rem; border-radius:8px;">&#8249;</button>
+        <div style="max-width:90vw; max-height:90vh; display:flex; flex-direction:column; align-items:center; gap:0.75rem;">
+            <img id="lightbox-img" src="" alt="" style="max-width:90vw; max-height:82vh; object-fit:contain; border-radius:4px; box-shadow:0 8px 40px rgba(0,0,0,0.6);">
+            <span id="lightbox-counter" style="color:rgba(255,255,255,0.7); font-size:0.95rem;"></span>
+        </div>
+        <button onclick="nextPhoto()" style="position:absolute; right:1rem; background:rgba(255,255,255,0.15); border:none; color:white; font-size:2rem; cursor:pointer; padding:0.75rem 1rem; border-radius:8px;">&#8250;</button>
+    </div>
+
+    <script>
+        const photos = [
+            {% for photo in photos %}
+            "{{ url_for('static', filename=photo['watermarked_path'].replace('\\', '/').replace('static/', '')) }}"{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ];
+        let current = 0;
+
+        function openLightbox(index) {
+            current = index;
+            showPhoto();
+            document.getElementById('lightbox').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightbox').style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        function showPhoto() {
+            document.getElementById('lightbox-img').src = photos[current];
+            document.getElementById('lightbox-counter').textContent = (current + 1) + ' / ' + photos.length;
+        }
+
+        function prevPhoto() {
+            current = (current - 1 + photos.length) % photos.length;
+            showPhoto();
+        }
+
+        function nextPhoto() {
+            current = (current + 1) % photos.length;
+            showPhoto();
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (document.getElementById('lightbox').style.display === 'none') return;
+            if (e.key === 'Escape') closeLightbox();
+            if (e.key === 'ArrowLeft') prevPhoto();
+            if (e.key === 'ArrowRight') nextPhoto();
+        });
+
+        document.getElementById('lightbox').addEventListener('click', function(e) {
+            if (e.target === this) closeLightbox();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Photographer Portal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <h1>📸 Photographer Portal</h1>
+            <a href="{{ url_for('logout') }}" class="btn btn-secondary">Logout</a>
+        </div>
+    </nav>
+    
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="page-header">
+            <h2>My Sessions</h2>
+            <a href="{{ url_for('create_session') }}" class="btn btn-primary">+ New Session</a>
+        </div>
+        
+        {% if sessions %}
+            <div class="sessions-grid">
+                {% for session in sessions %}
+                    <div class="session-card">
+                        <h3>{{ session['session_name'] }}</h3>
+                        <div class="session-info">
+                            <p><strong>Customer:</strong> {{ session['customer_name'] }}</p>
+                            {% if session['customer_email'] %}
+                                <p><strong>Email:</strong> {{ session['customer_email'] }}</p>
+                            {% endif %}
+                            <p><strong>Created:</strong> {{ session['created_at'][:10] }}</p>
+                        </div>
+                        
+                        <div class="session-stats">
+                            <span class="stat">
+                                <strong>{{ session['photo_count'] }}</strong> photos
+                            </span>
+                            <span class="stat stat-approved">
+                                <strong>{{ session['approved_count'] }}</strong> approved
+                            </span>
+                        </div>
+                        
+                        {% if session['approved_all'] == 1 %}
+                            <div class="badge badge-success">All Approved ✓</div>
+                        {% endif %}
+                        
+                        <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+                            <a href="{{ url_for('manage_session', session_id=session['id']) }}"
+                               class="btn btn-outline" style="flex:1;">Manage →</a>
+                            <form method="POST" action="{{ url_for('delete_session', session_id=session['id']) }}"
+                                  onsubmit="return confirm('Delete this session? This cannot be undone.');">
+                                <button type="submit" class="btn btn-danger">🗑</button>
+                            </form>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <p>No sessions yet. Create your first session to get started!</p>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

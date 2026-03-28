@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ session['session_name'] }} - Photographer Portal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <h1>📸 Photographer Portal</h1>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">← Back to Dashboard</a>
+        </div>
+    </nav>
+    
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="session-header">
+            <div>
+                <h2>{{ session['session_name'] }}</h2>
+                <p class="session-customer">Customer: {{ session['customer_name'] }}</p>
+                
+                {% if session['zip_path'] and session['zip_generated_at'] %}
+                    <p class="zip-status">
+                        ✓ ZIP file ready for download (Generated: {{ session['zip_generated_at'][:16] }})
+                    </p>
+                {% endif %}
+            </div>
+            <div class="session-actions">
+                {% if photos %}
+                    <form method="POST" action="{{ url_for('approve_all', session_id=session['id']) }}" style="display: inline;">
+                        <button type="submit" class="btn btn-success">✓ Approve All Photos</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('generate_zip', session_id=session['id']) }}" style="display: inline;">
+                        <button type="submit" class="btn btn-outline">📦 Generate ZIP</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('regenerate_watermarks', session_id=session['id']) }}" style="display: inline;">
+                        <button type="submit" class="btn btn-outline">🔄 Regenerate Watermarks</button>
+                    </form>
+                {% endif %}
+                <form method="POST" action="{{ url_for('delete_session', session_id=session['id']) }}" style="display: inline;"
+                      onsubmit="return confirm('Delete this session and all its photos? This cannot be undone.');">
+                    <button type="submit" class="btn btn-danger">🗑 Delete Session</button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="customer-link-section">
+            <h3>Customer Access Link</h3>
+            <div class="link-box">
+                <input type="text" id="customer-link" value="{{ customer_link }}" readonly>
+                <button onclick="copyLink()" class="btn btn-outline">Copy Link</button>
+            </div>
+            <p class="help-text">Share this link with your customer to view their photos</p>
+        </div>
+        
+        <div class="upload-section">
+            <h3>Upload Photos</h3>
+            <form method="POST" action="{{ url_for('upload_photos', session_id=session['id']) }}" 
+                  enctype="multipart/form-data" id="upload-form">
+                <div class="file-upload">
+                    <input type="file" id="photos" name="photos" multiple accept="image/*" required>
+                    <label for="photos" class="file-upload-label">
+                        Choose Photos or Drag & Drop
+                    </label>
+                    <button type="submit" class="btn btn-primary">Upload Photos</button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="photos-section">
+            <h3>Photos ({{ photos|length }})</h3>
+            
+            {% if photos %}
+                <div class="photos-grid">
+                    {% for photo in photos %}
+                        <div class="photo-card" id="photo-{{ photo['id'] }}">
+                            <div class="photo-wrapper">
+                                <img src="{{ url_for('static', filename=photo['watermarked_path'].replace('\\', '/').replace('static/', '')) }}"
+                                     alt="{{ photo['filename'] }}">
+                            </div>
+                            <div class="photo-info">
+                                <p class="photo-filename">{{ photo['filename'] }}</p>
+                                <div class="photo-actions">
+                                    {% if photo['approved'] == 1 %}
+                                        <span class="badge badge-success">Approved ✓</span>
+                                        <button onclick="unapprovePhoto({{ photo['id'] }})" 
+                                                class="btn btn-small btn-secondary">Unapprove</button>
+                                    {% else %}
+                                        <span class="badge badge-warning">Pending</span>
+                                        <button onclick="approvePhoto({{ photo['id'] }})" 
+                                                class="btn btn-small btn-success">Approve</button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <p>No photos uploaded yet. Upload photos to get started!</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/photographer.js') }}"></script>
+    <script>
+        function copyLink() {
+            const linkInput = document.getElementById('customer-link');
+            linkInput.select();
+            document.execCommand('copy');
+            alert('Link copied to clipboard!');
+        }
+    </script>
+</body>
+</html>
