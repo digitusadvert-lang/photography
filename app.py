@@ -207,9 +207,10 @@ def generate_session_zip(session_id):
             print(f"INFO: Starting ZIP creation...")
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
                 for i, photo in enumerate(photos):
-                    photo_path = photo['original_path']
+                    orig = photo['original_path']
+                    photo_path = str(BASE_DIR / orig) if not os.path.isabs(orig) else orig
                     print(f"INFO: Adding photo {i+1}/{len(photos)}: {photo_path}")
-                    
+
                     if not os.path.exists(photo_path):
                         print(f"WARNING: Photo file not found: {photo_path}")
                         continue
@@ -361,14 +362,15 @@ def regenerate_watermarks(session_id):
 
     success = 0
     for photo in photos:
-        original_path = photo['original_path']
-        if not os.path.exists(original_path):
+        original_rel = photo['original_path']
+        original_abs = str(BASE_DIR / original_rel)
+        if not os.path.exists(original_abs):
             continue
-        # Build watermarked path (always under WATERMARK_FOLDER)
-        wm_filename = f"wm_{os.path.basename(original_path)}"
-        watermarked_path = os.path.join(app.config['WATERMARK_FOLDER'], wm_filename).replace('\\', '/')
-        if create_watermark(original_path, watermarked_path):
-            c.execute("UPDATE photos SET watermarked_path = ? WHERE id = ?", (watermarked_path, photo['id']))
+        wm_filename = f"wm_{os.path.basename(original_rel)}"
+        watermarked_abs = os.path.join(app.config['WATERMARK_FOLDER'], wm_filename)
+        watermarked_rel = f"static/watermarked/{wm_filename}"
+        if create_watermark(original_abs, watermarked_abs):
+            c.execute("UPDATE photos SET watermarked_path = ? WHERE id = ?", (watermarked_rel, photo['id']))
             success += 1
 
     conn.commit()
@@ -395,24 +397,26 @@ def upload_photos(session_id):
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             unique_filename = f"{timestamp}_{filename}"
             
-            # Save original
-            original_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename).replace('\\', '/')
-            file.save(original_path)
+            # Absolute paths for file operations
+            original_abs = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            file.save(original_abs)
 
-            # Create watermarked version
+            # Relative paths (from project root) stored in DB for URL generation
+            original_rel = f"static/uploads/{unique_filename}"
+
             watermarked_filename = f"wm_{unique_filename}"
-            watermarked_path = os.path.join(app.config['WATERMARK_FOLDER'], watermarked_filename).replace('\\', '/')
-            
-            watermark_ok = create_watermark(original_path, watermarked_path)
+            watermarked_abs = os.path.join(app.config['WATERMARK_FOLDER'], watermarked_filename)
+            watermarked_rel = f"static/watermarked/{watermarked_filename}"
+
+            watermark_ok = create_watermark(original_abs, watermarked_abs)
             if not watermark_ok:
-                # Watermark failed — use original as fallback so photo still appears
-                watermarked_path = original_path
+                watermarked_rel = original_rel
                 print(f"WARNING: Watermark failed for {filename}, using original as preview")
 
-            # Save to database regardless of watermark result
+            # Save relative paths to database
             c.execute("""INSERT INTO photos (session_id, filename, original_path, watermarked_path)
                          VALUES (?, ?, ?, ?)""",
-                      (session_id, filename, original_path, watermarked_path))
+                      (session_id, filename, original_rel, watermarked_rel))
             uploaded_count += 1
     
     conn.commit()
@@ -454,19 +458,25 @@ def delete_session(session_id):
     c.execute("SELECT * FROM photos WHERE session_id = ?", (session_id,))
     photos = c.fetchall()
     for photo in photos:
-        for path in [photo['original_path'], photo['watermarked_path']]:
-            if path and os.path.exists(path):
+        for rel_path in [photo['original_path'], photo['watermarked_path']]:
+            if not rel_path:
+                continue
+            abs_p = str(BASE_DIR / rel_path) if not os.path.isabs(rel_path) else rel_path
+            if os.path.exists(abs_p):
                 try:
-                    os.remove(path)
+                    os.remove(abs_p)
                 except Exception:
                     pass
 
     # Delete ZIP file if exists
     c.execute("SELECT zip_path FROM sessions WHERE id = ?", (session_id,))
     session = c.fetchone()
-    if session and session['zip_path'] and os.path.exists(session['zip_path']):
+    zip_abs = session['zip_path'] if session else None
+    if zip_abs and not os.path.isabs(zip_abs):
+        zip_abs = str(BASE_DIR / zip_abs)
+    if zip_abs and os.path.exists(zip_abs):
         try:
-            os.remove(session['zip_path'])
+            os.remove(zip_abs)
         except Exception:
             pass
 
@@ -547,7 +557,9 @@ def download_photo(photo_id):
     if photo['approved'] != 1:
         return "Photo not approved for download", 403
     
-    return send_file(photo['original_path'], as_attachment=True, download_name=photo['filename'])
+    orig = photo['original_path']
+    orig_abs = str(BASE_DIR / orig) if not os.path.isabs(orig) else orig
+    return send_file(orig_abs, as_attachment=True, download_name=photo['filename'])
 
 @app.route('/download_all/<token>')
 def download_all(token):
