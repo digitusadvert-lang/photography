@@ -504,6 +504,11 @@ body {
     color: #856404;
 }
 
+.badge-selected {
+    background: #e8eaff;
+    color: #667eea;
+}
+
 /* Customer View Styles */
 .customer-view {
     background: #f5f7fa;

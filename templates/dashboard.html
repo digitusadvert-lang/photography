@@ -10,7 +10,10 @@
     <nav class="navbar">
         <div class="nav-container">
             <h1>📸 Photographer Portal</h1>
-            <a href="{{ url_for('logout') }}" class="btn btn-secondary">Logout</a>
+            <div style="display:flex; gap:0.75rem;">
+                <a href="{{ url_for('settings') }}" class="btn btn-outline" style="color:white; border-color:rgba(255,255,255,0.5);">⚙ Payment Settings</a>
+                <a href="{{ url_for('logout') }}" class="btn btn-secondary">Logout</a>
+            </div>
         </div>
     </nav>
     
@@ -42,16 +45,21 @@
                         </div>
                         
                         <div class="session-stats">
-                            <span class="stat">
-                                <strong>{{ session['photo_count'] }}</strong> photos
-                            </span>
-                            <span class="stat stat-approved">
-                                <strong>{{ session['approved_count'] }}</strong> approved
-                            </span>
+                            <span class="stat"><strong>{{ session['photo_count'] }}</strong> photos</span>
+                            <span class="stat stat-approved"><strong>{{ session['approved_count'] }}</strong> approved</span>
+                            {% if session['selection_submitted'] %}
+                                <span class="stat" style="color:#667eea;"><strong>{{ session['selected_count'] }}</strong> selected</span>
+                            {% endif %}
                         </div>
-                        
-                        {% if session['approved_all'] == 1 %}
-                            <div class="badge badge-success">All Approved ✓</div>
+
+                        <div style="font-size:0.8rem; color:#7f8c8d; margin-bottom:0.75rem;">
+                            RM {{ "%.2f"|format(session['base_price'] or 0) }} pkg · RM {{ "%.2f"|format(session['deposit_paid'] or 0) }} deposit
+                        </div>
+
+                        {% if session['selection_submitted'] %}
+                            <div class="badge badge-success" style="margin-bottom:0.5rem; display:block;">Selection Submitted ✓</div>
+                        {% elif session['approved_all'] == 1 %}
+                            <div class="badge badge-success" style="margin-bottom:0.5rem; display:block;">All Approved ✓</div>
                         {% endif %}
                         
                         <div style="display:flex; gap:0.5rem; margin-top:1rem;">

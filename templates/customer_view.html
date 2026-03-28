@@ -5,127 +5,228 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ session['session_name'] }} - Your Photos</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .selection-bar {
+            position: sticky; top: 0; z-index: 100;
+            background: white; border-bottom: 2px solid #e0e6ed;
+            padding: 1rem 2rem; display: flex; justify-content: space-between;
+            align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            flex-wrap: wrap; gap: 0.75rem;
+        }
+        .selection-count { font-size: 1rem; font-weight: 600; color: #2c3e50; }
+        .selection-cost { font-size: 0.95rem; color: #667eea; font-weight: 600; }
+        .photo-card.selected-card { outline: 3px solid #667eea; transform: translateY(-4px); }
+        .photo-card.selected-card .select-overlay { background: rgba(102,126,234,0.15); }
+        .select-overlay {
+            position: absolute; inset: 0; display: flex;
+            align-items: flex-end; justify-content: flex-end;
+            padding: 0.5rem; cursor: pointer;
+        }
+        .select-tick {
+            width: 32px; height: 32px; border-radius: 50%;
+            background: white; border: 2px solid #ccc;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; transition: all 0.2s;
+        }
+        .photo-card.selected-card .select-tick {
+            background: #667eea; border-color: #667eea; color: white;
+        }
+        .submitted-banner {
+            background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
+            padding: 1.25rem 2rem; border-radius: 8px; margin-bottom: 1.5rem;
+            font-weight: 500;
+        }
+        .photo-wrapper { cursor: pointer; }
+    </style>
 </head>
 <body class="customer-view">
     <div class="customer-header">
         <h1>📸 {{ session['session_name'] }}</h1>
         <p class="welcome-text">Welcome, {{ session['customer_name'] }}!</p>
     </div>
-    
-    <div class="container">
-        <div class="customer-info-box">
-            <h2>Your Photo Gallery</h2>
-            <p>Your photographer has uploaded {{ photos|length }} photo{% if photos|length != 1 %}s{% endif %} for you to review.</p>
-            <div class="status-info">
-                {% set approved_count = photos|selectattr('approved', 'equalto', 1)|list|length %}
-                <p><strong>{{ approved_count }}</strong> of <strong>{{ photos|length }}</strong> photos are approved for download.</p>
-                
-                {% if approved_count > 0 %}
-                    <a href="{{ url_for('download_all', token=session['access_token']) }}" 
-                       class="btn btn-primary download-all-btn">
-                        📦 Download All Approved Photos (ZIP)
-                    </a>
-                {% endif %}
-            </div>
+
+    {% set submitted = session['selection_submitted'] == 1 %}
+    {% set approved_count = photos|selectattr('approved', 'equalto', 1)|list|length %}
+
+    {% if not submitted %}
+    <!-- Sticky selection bar -->
+    <div class="selection-bar" id="selectionBar">
+        <div>
+            <div class="selection-count" id="selCountText">0 photos selected</div>
+            <div class="selection-cost" id="selCostText"></div>
         </div>
-        
+        <div style="display:flex; gap:0.75rem; align-items:center;">
+            <span style="font-size:0.85rem; color:#7f8c8d;">
+                Package: RM {{ "%.2f"|format(session['base_price']) }} for {{ session['base_photos_included'] }} photos
+                {% if session['extra_photo_price'] %} · Extra: RM {{ "%.2f"|format(session['extra_photo_price']) }}/photo{% endif %}
+            </span>
+            <form method="POST" action="{{ url_for('submit_selection', token=session['access_token']) }}" id="submitForm">
+                <button type="submit" class="btn btn-primary" id="submitBtn" disabled>Submit Selection</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}{% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}{% endif %}
+        {% endwith %}
+
+        {% if submitted %}
+            <div class="submitted-banner">
+                ✅ Your selection has been submitted! The photographer will approve your photos after payment verification.
+                <a href="{{ url_for('invoice', token=session['access_token']) }}" class="btn btn-primary btn-small" style="margin-left:1rem;">View Invoice</a>
+            </div>
+        {% endif %}
+
+        {% if approved_count > 0 %}
+        <div class="customer-info-box" style="margin-bottom:1.5rem;">
+            <h2>Download Your Photos</h2>
+            <p><strong>{{ approved_count }}</strong> photo(s) approved and ready for download.</p>
+            <a href="{{ url_for('download_all', token=session['access_token']) }}"
+               class="btn btn-primary download-all-btn">📦 Download All Approved Photos (ZIP)</a>
+        </div>
+        {% endif %}
+
+        {% if not submitted %}
+        <div class="customer-info-box" style="margin-bottom:1.5rem;">
+            <h2>Your Photo Gallery</h2>
+            <p>Click on photos to select the ones you want. You can click to preview full size, or click the ✓ circle to select/deselect.</p>
+            <p style="margin-top:0.5rem; font-size:0.9rem; color:#7f8c8d;">
+                {{ photos|length }} photos available · Package includes {{ session['base_photos_included'] }} edited photos
+            </p>
+        </div>
+        {% endif %}
+
         {% if photos %}
             <div class="photos-grid customer-grid">
                 {% for photo in photos %}
-                    <div class="photo-card customer-photo">
-                        <div class="photo-wrapper" onclick="openLightbox({{ loop.index0 }})" style="cursor:zoom-in;">
+                    <div class="photo-card customer-photo {% if photo['selected'] %}selected-card{% endif %}"
+                         id="card-{{ photo['id'] }}">
+                        <div class="photo-wrapper" onclick="openLightbox({{ loop.index0 }})">
                             <img src="{{ url_for('static', filename=photo['watermarked_path'].replace('\\', '/').replace('static/', '')) }}"
-                                 alt="Photo {{ loop.index }}">
-                            {% if photo['approved'] != 1 %}
-                                <div class="watermark-overlay">
-                                    <span class="pending-badge">Pending Approval</span>
+                                 alt="Photo {{ photo['photo_number'] or loop.index }}">
+                            {% if not submitted %}
+                            <div class="select-overlay" onclick="event.stopPropagation(); toggleSelect({{ photo['id'] }})">
+                                <div class="select-tick" id="tick-{{ photo['id'] }}">
+                                    {% if photo['selected'] %}✓{% endif %}
                                 </div>
+                            </div>
                             {% endif %}
                         </div>
                         <div class="photo-info customer-photo-info">
-                            <p class="photo-number">Photo {{ loop.index }}</p>
+                            <p class="photo-number">Photo #{{ photo['photo_number'] or loop.index }}</p>
                             {% if photo['approved'] == 1 %}
-                                <a href="{{ url_for('download_photo', photo_id=photo['id']) }}" 
-                                   class="btn btn-success btn-download" download>
-                                    ⬇ Download Original
-                                </a>
+                                <a href="{{ url_for('download_photo', photo_id=photo['id']) }}"
+                                   class="btn btn-success btn-download btn-small" download>⬇ Download</a>
+                            {% elif submitted and photo['selected'] %}
+                                <span class="badge badge-warning">Pending Payment</span>
+                            {% elif submitted %}
+                                <span style="font-size:0.8rem; color:#bdc3c7;">Not selected</span>
                             {% else %}
-                                <button class="btn btn-disabled" disabled>
-                                    🔒 Download Not Available
-                                </button>
-                                <p class="help-text">Waiting for photographer approval</p>
+                                <span class="badge {% if photo['selected'] %}badge-selected{% else %}badge-warning{% endif %}"
+                                      id="badge-{{ photo['id'] }}">
+                                    {% if photo['selected'] %}Selected ✓{% else %}Not selected{% endif %}
+                                </span>
                             {% endif %}
                         </div>
                     </div>
                 {% endfor %}
             </div>
         {% else %}
-            <div class="empty-state">
-                <p>No photos have been uploaded yet. Please check back later!</p>
-            </div>
+            <div class="empty-state"><p>No photos uploaded yet. Check back later!</p></div>
         {% endif %}
-        
+
         <div class="customer-footer">
             <p>Questions? Contact your photographer directly.</p>
         </div>
     </div>
 
-    <!-- Lightbox Modal -->
+    <!-- Lightbox -->
     <div id="lightbox" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:9999; align-items:center; justify-content:center;">
-        <button onclick="closeLightbox()" style="position:absolute; top:1rem; right:1.5rem; background:none; border:none; color:white; font-size:2.5rem; cursor:pointer; line-height:1;">&times;</button>
+        <button onclick="closeLightbox()" style="position:absolute; top:1rem; right:1.5rem; background:none; border:none; color:white; font-size:2.5rem; cursor:pointer;">&times;</button>
         <button onclick="prevPhoto()" style="position:absolute; left:1rem; background:rgba(255,255,255,0.15); border:none; color:white; font-size:2rem; cursor:pointer; padding:0.75rem 1rem; border-radius:8px;">&#8249;</button>
         <div style="max-width:90vw; max-height:90vh; display:flex; flex-direction:column; align-items:center; gap:0.75rem;">
-            <img id="lightbox-img" src="" alt="" style="max-width:90vw; max-height:82vh; object-fit:contain; border-radius:4px; box-shadow:0 8px 40px rgba(0,0,0,0.6);">
+            <img id="lightbox-img" src="" alt="" style="max-width:90vw; max-height:82vh; object-fit:contain; border-radius:4px;">
             <span id="lightbox-counter" style="color:rgba(255,255,255,0.7); font-size:0.95rem;"></span>
         </div>
         <button onclick="nextPhoto()" style="position:absolute; right:1rem; background:rgba(255,255,255,0.15); border:none; color:white; font-size:2rem; cursor:pointer; padding:0.75rem 1rem; border-radius:8px;">&#8250;</button>
     </div>
 
     <script>
-        const photos = [
+        const TOKEN = "{{ session['access_token'] }}";
+        const BASE_PRICE = {{ session['base_price'] or 0 }};
+        const INCLUDED = {{ session['base_photos_included'] or 0 }};
+        const EXTRA_PRICE = {{ session['extra_photo_price'] or 0 }};
+        const DEPOSIT = {{ session['deposit_paid'] or 0 }};
+        const SUBMITTED = {{ 'true' if session['selection_submitted'] else 'false' }};
+
+        const photoSrcs = [
             {% for photo in photos %}
             "{{ url_for('static', filename=photo['watermarked_path'].replace('\\', '/').replace('static/', '')) }}"{% if not loop.last %},{% endif %}
             {% endfor %}
         ];
+
+        // Track selections
+        let selected = new Set(
+            [{% for photo in photos %}{% if photo['selected'] %}{{ photo['id'] }}{% if not loop.last %},{% endif %}{% endif %}{% endfor %}]
+        );
+
+        function updateBar() {
+            const n = selected.size;
+            document.getElementById('selCountText').textContent = n + ' photo' + (n !== 1 ? 's' : '') + ' selected';
+            const extra = Math.max(0, n - INCLUDED);
+            const extraCost = extra * EXTRA_PRICE;
+            const total = BASE_PRICE + extraCost;
+            const balance = total - DEPOSIT;
+            let costStr = 'RM ' + total.toFixed(2) + ' total';
+            if (extra > 0) costStr += ' (' + extra + ' extra × RM ' + EXTRA_PRICE.toFixed(2) + ')';
+            costStr += ' · Balance: RM ' + balance.toFixed(2);
+            document.getElementById('selCostText').textContent = costStr;
+            document.getElementById('submitBtn').disabled = n === 0;
+        }
+
+        function toggleSelect(photoId) {
+            if (SUBMITTED) return;
+            fetch('/view/' + TOKEN + '/toggle_select/' + photoId, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    const card = document.getElementById('card-' + photoId);
+                    const tick = document.getElementById('tick-' + photoId);
+                    const badge = document.getElementById('badge-' + photoId);
+                    if (data.selected) {
+                        selected.add(photoId);
+                        card.classList.add('selected-card');
+                        tick.textContent = '✓';
+                        if (badge) { badge.textContent = 'Selected ✓'; badge.className = 'badge badge-selected'; }
+                    } else {
+                        selected.delete(photoId);
+                        card.classList.remove('selected-card');
+                        tick.textContent = '';
+                        if (badge) { badge.textContent = 'Not selected'; badge.className = 'badge badge-warning'; }
+                    }
+                    updateBar();
+                });
+        }
+
+        updateBar();
+
+        // Lightbox
         let current = 0;
-
-        function openLightbox(index) {
-            current = index;
-            showPhoto();
-            document.getElementById('lightbox').style.display = 'flex';
-            document.body.style.overflow = 'hidden';
-        }
-
-        function closeLightbox() {
-            document.getElementById('lightbox').style.display = 'none';
-            document.body.style.overflow = '';
-        }
-
-        function showPhoto() {
-            document.getElementById('lightbox-img').src = photos[current];
-            document.getElementById('lightbox-counter').textContent = (current + 1) + ' / ' + photos.length;
-        }
-
-        function prevPhoto() {
-            current = (current - 1 + photos.length) % photos.length;
-            showPhoto();
-        }
-
-        function nextPhoto() {
-            current = (current + 1) % photos.length;
-            showPhoto();
-        }
-
-        document.addEventListener('keydown', function(e) {
+        function openLightbox(i) { current = i; showPhoto(); document.getElementById('lightbox').style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+        function closeLightbox() { document.getElementById('lightbox').style.display = 'none'; document.body.style.overflow = ''; }
+        function showPhoto() { document.getElementById('lightbox-img').src = photoSrcs[current]; document.getElementById('lightbox-counter').textContent = (current+1) + ' / ' + photoSrcs.length; }
+        function prevPhoto() { current = (current - 1 + photoSrcs.length) % photoSrcs.length; showPhoto(); }
+        function nextPhoto() { current = (current + 1) % photoSrcs.length; showPhoto(); }
+        document.addEventListener('keydown', e => {
             if (document.getElementById('lightbox').style.display === 'none') return;
             if (e.key === 'Escape') closeLightbox();
             if (e.key === 'ArrowLeft') prevPhoto();
             if (e.key === 'ArrowRight') nextPhoto();
         });
-
-        document.getElementById('lightbox').addEventListener('click', function(e) {
-            if (e.target === this) closeLightbox();
-        });
+        document.getElementById('lightbox').addEventListener('click', e => { if (e.target === document.getElementById('lightbox')) closeLightbox(); });
     </script>
 </body>
 </html>

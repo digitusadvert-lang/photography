@@ -27,28 +27,51 @@
             <div>
                 <h2>{{ session['session_name'] }}</h2>
                 <p class="session-customer">Customer: {{ session['customer_name'] }}</p>
-                
-                {% if session['zip_path'] and session['zip_generated_at'] %}
-                    <p class="zip-status">
-                        ✓ ZIP file ready for download (Generated: {{ session['zip_generated_at'][:16] }})
+
+                <div style="margin-top:0.75rem; font-size:0.9rem; color:#7f8c8d; line-height:1.8;">
+                    <span>Package: <strong>RM {{ "%.2f"|format(session['base_price'] or 0) }}</strong> for {{ session['base_photos_included'] or 0 }} photos</span> ·
+                    <span>Extra: <strong>RM {{ "%.2f"|format(session['extra_photo_price'] or 0) }}</strong>/photo</span> ·
+                    <span>Deposit: <strong>RM {{ "%.2f"|format(session['deposit_paid'] or 0) }}</strong></span>
+                </div>
+
+                {% if session['selection_submitted'] %}
+                    <div style="margin-top:0.75rem; background:#d4edda; border:1px solid #c3e6cb; color:#155724;
+                                padding:0.75rem 1rem; border-radius:8px; font-size:0.9rem;">
+                        ✅ Customer submitted selection: <strong>{{ selected_photos|length }} photos</strong>
+                        {% if balance_due is not none %} · Balance Due: <strong>RM {{ "%.2f"|format(balance_due) }}</strong>{% endif %}
+                        <a href="{{ url_for('invoice', token=session['access_token']) }}" target="_blank"
+                           style="margin-left:0.75rem; color:#155724; font-weight:600;">View Invoice →</a>
+                    </div>
+                {% else %}
+                    <p style="margin-top:0.5rem; font-size:0.85rem; color:#e67e22;">
+                        ⏳ Waiting for customer to select photos
                     </p>
+                {% endif %}
+
+                {% if session['zip_path'] and session['zip_generated_at'] %}
+                    <p class="zip-status">✓ ZIP ready ({{ session['zip_generated_at'][:16] }})</p>
                 {% endif %}
             </div>
             <div class="session-actions">
+                {% if session['selection_submitted'] and selected_photos %}
+                    <form method="POST" action="{{ url_for('approve_selected', session_id=session['id']) }}" style="display:inline;">
+                        <button type="submit" class="btn btn-success">✓ Approve Selected ({{ selected_photos|length }})</button>
+                    </form>
+                {% endif %}
                 {% if photos %}
                     <form method="POST" action="{{ url_for('approve_all', session_id=session['id']) }}" style="display: inline;">
-                        <button type="submit" class="btn btn-success">✓ Approve All Photos</button>
+                        <button type="submit" class="btn btn-outline">✓ Approve All</button>
                     </form>
                     <form method="POST" action="{{ url_for('generate_zip', session_id=session['id']) }}" style="display: inline;">
-                        <button type="submit" class="btn btn-outline">📦 Generate ZIP</button>
+                        <button type="submit" class="btn btn-outline">📦 ZIP</button>
                     </form>
                     <form method="POST" action="{{ url_for('regenerate_watermarks', session_id=session['id']) }}" style="display: inline;">
-                        <button type="submit" class="btn btn-outline">🔄 Regenerate Watermarks</button>
+                        <button type="submit" class="btn btn-outline">🔄 Watermarks</button>
                     </form>
                 {% endif %}
                 <form method="POST" action="{{ url_for('delete_session', session_id=session['id']) }}" style="display: inline;"
                       onsubmit="return confirm('Delete this session and all its photos? This cannot be undone.');">
-                    <button type="submit" class="btn btn-danger">🗑 Delete Session</button>
+                    <button type="submit" class="btn btn-danger">🗑 Delete</button>
                 </form>
             </div>
         </div>
@@ -88,15 +111,18 @@
                                      alt="{{ photo['filename'] }}">
                             </div>
                             <div class="photo-info">
-                                <p class="photo-filename">{{ photo['filename'] }}</p>
+                                <p class="photo-filename">#{{ photo['photo_number'] or loop.index }} · {{ photo['filename'] }}</p>
+                                {% if photo['selected'] %}
+                                    <p style="font-size:0.78rem; color:#667eea; font-weight:600; margin-bottom:0.4rem;">⭐ Customer selected</p>
+                                {% endif %}
                                 <div class="photo-actions">
                                     {% if photo['approved'] == 1 %}
                                         <span class="badge badge-success">Approved ✓</span>
-                                        <button onclick="unapprovePhoto({{ photo['id'] }})" 
+                                        <button onclick="unapprovePhoto({{ photo['id'] }})"
                                                 class="btn btn-small btn-secondary">Unapprove</button>
                                     {% else %}
                                         <span class="badge badge-warning">Pending</span>
-                                        <button onclick="approvePhoto({{ photo['id'] }})" 
+                                        <button onclick="approvePhoto({{ photo['id'] }})"
                                                 class="btn btn-small btn-success">Approve</button>
                                     {% endif %}
                                 </div>

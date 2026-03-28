@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice - {{ session['session_name'] }}</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f5f7fa; color:#2c3e50; }
+
+        .page { max-width: 720px; margin: 2rem auto; background: white; border-radius:12px;
+                box-shadow:0 4px 20px rgba(0,0,0,0.08); overflow:hidden; }
+
+        .invoice-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                          color:white; padding:2.5rem; }
+        .invoice-header h1 { font-size:1.8rem; margin-bottom:0.25rem; }
+        .invoice-header p { opacity:0.85; font-size:0.95rem; }
+        .invoice-meta { display:flex; justify-content:space-between; margin-top:1.5rem; flex-wrap:wrap; gap:1rem; }
+        .invoice-meta div { font-size:0.9rem; }
+        .invoice-meta strong { display:block; font-size:1rem; }
+
+        .invoice-body { padding:2rem; }
+
+        .section-title { font-size:0.8rem; text-transform:uppercase; letter-spacing:1px;
+                         color:#7f8c8d; margin-bottom:0.75rem; margin-top:2rem; }
+
+        .photo-chips { display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem; }
+        .chip { background:#f0f0ff; color:#667eea; border:1px solid #c5caf5;
+                padding:0.35rem 0.75rem; border-radius:20px; font-size:0.85rem; font-weight:600; }
+
+        .cost-table { width:100%; border-collapse:collapse; margin-top:0.5rem; }
+        .cost-table td { padding:0.6rem 0.5rem; font-size:0.95rem; border-bottom:1px solid #f0f0f0; }
+        .cost-table td:last-child { text-align:right; font-weight:500; }
+        .cost-table .total-row td { font-weight:700; font-size:1rem; border-bottom:none;
+                                     border-top:2px solid #2c3e50; padding-top:0.75rem; }
+        .cost-table .deposit-row td { color:#27ae60; }
+        .cost-table .balance-row td { color:#e74c3c; font-size:1.15rem; font-weight:700; }
+
+        .payment-section { display:grid; grid-template-columns:1fr auto; gap:2rem;
+                           align-items:start; margin-top:0.5rem; }
+        .bank-info p { margin-bottom:0.4rem; font-size:0.95rem; }
+        .bank-info strong { color:#2c3e50; }
+        .qr-box { text-align:center; }
+        .qr-box img { max-width:150px; max-height:150px; border-radius:8px;
+                      border:1px solid #e0e6ed; }
+        .qr-box p { font-size:0.75rem; color:#7f8c8d; margin-top:0.4rem; }
+
+        .footer-note { background:#fff8e1; border:1px solid #ffe082; border-radius:8px;
+                       padding:1rem 1.25rem; margin-top:2rem; font-size:0.9rem; color:#7b6012; }
+
+        .print-btn { display:block; text-align:center; margin:1.5rem auto;
+                     max-width:200px; padding:0.75rem 1.5rem;
+                     background:linear-gradient(135deg,#667eea,#764ba2);
+                     color:white; border:none; border-radius:8px; cursor:pointer;
+                     font-size:1rem; font-weight:500; text-decoration:none; }
+
+        @media print {
+            body { background:white; }
+            .page { box-shadow:none; margin:0; border-radius:0; }
+            .print-btn, .no-print { display:none !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="page">
+    <div class="invoice-header">
+        <h1>📋 Photo Selection Invoice</h1>
+        <p>Thank you for choosing your photos!</p>
+        <div class="invoice-meta">
+            <div>
+                <strong>{{ session['customer_name'] }}</strong>
+                {{ session['session_name'] }}
+            </div>
+            <div style="text-align:right;">
+                <strong>Invoice #{{ session['id'] }}</strong>
+                {{ session['submitted_at'][:10] if session['submitted_at'] else 'N/A' }}
+            </div>
+        </div>
+    </div>
+
+    <div class="invoice-body">
+
+        <!-- Selected Photos -->
+        <div class="section-title">Selected Photos ({{ n }} photos)</div>
+        <div class="photo-chips">
+            {% for photo in selected_photos %}
+                <span class="chip">#{{ photo['photo_number'] }}</span>
+            {% endfor %}
+        </div>
+
+        <!-- Cost Breakdown -->
+        <div class="section-title">Cost Breakdown</div>
+        <table class="cost-table">
+            <tr>
+                <td>Base Package ({{ included }} photos)</td>
+                <td>RM {{ "%.2f"|format(session['base_price']) }}</td>
+            </tr>
+            {% if extra > 0 %}
+            <tr>
+                <td>Extra Photos ({{ extra }} × RM {{ "%.2f"|format(session['extra_photo_price']) }})</td>
+                <td>RM {{ "%.2f"|format(extra_cost) }}</td>
+            </tr>
+            {% endif %}
+            <tr class="total-row">
+                <td>Total</td>
+                <td>RM {{ "%.2f"|format(total) }}</td>
+            </tr>
+            <tr class="deposit-row">
+                <td>Deposit Paid</td>
+                <td>− RM {{ "%.2f"|format(session['deposit_paid']) }}</td>
+            </tr>
+            <tr class="balance-row">
+                <td><strong>Balance Due</strong></td>
+                <td><strong>RM {{ "%.2f"|format(balance_due) }}</strong></td>
+            </tr>
+        </table>
+
+        <!-- Payment Details -->
+        {% if pg and (pg['bank_name'] or pg['tng_qr_path']) %}
+        <div class="section-title">Payment Details</div>
+        <div class="payment-section">
+            <div class="bank-info">
+                {% if pg['bank_name'] %}
+                    <p><strong>Bank:</strong> {{ pg['bank_name'] }}</p>
+                {% endif %}
+                {% if pg['bank_holder'] %}
+                    <p><strong>Account Name:</strong> {{ pg['bank_holder'] }}</p>
+                {% endif %}
+                {% if pg['bank_account'] %}
+                    <p><strong>Account No:</strong> {{ pg['bank_account'] }}</p>
+                {% endif %}
+                <p style="margin-top:1rem; font-size:0.85rem; color:#7f8c8d;">
+                    Please transfer <strong style="color:#e74c3c;">RM {{ "%.2f"|format(balance_due) }}</strong>
+                    and WhatsApp your photographer once payment is done.
+                </p>
+            </div>
+            {% if pg['tng_qr_path'] %}
+            <div class="qr-box">
+                <img src="{{ url_for('static', filename=pg['tng_qr_path'].replace('static/', '')) }}"
+                     alt="Touch & Go QR">
+                <p>Touch & Go QR</p>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="footer-note">
+            After payment, WhatsApp your photographer with proof of payment. Your photos will be
+            approved for download once payment is verified.
+        </div>
+
+    </div>
+</div>
+
+<button class="print-btn no-print" onclick="window.print()">🖨 Print / Save PDF</button>
+
+</body>
+</html>

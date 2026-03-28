@@ -27,6 +27,7 @@ app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'heic'}
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['WATERMARK_FOLDER'], exist_ok=True)
 os.makedirs(app.config['DOWNLOAD_FOLDER'], exist_ok=True)
+os.makedirs(str(BASE_DIR / 'static/qr'), exist_ok=True)
 
 print(f"✅ Upload folder: {app.config['UPLOAD_FOLDER']}")
 print(f"✅ Watermark folder: {app.config['WATERMARK_FOLDER']}")
@@ -45,7 +46,7 @@ def init_db():
                   password_hash TEXT NOT NULL,
                   email TEXT,
                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    
+
     # Sessions table
     c.execute('''CREATE TABLE IF NOT EXISTS sessions
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,8 +59,14 @@ def init_db():
                   zip_path TEXT,
                   zip_generated_at TIMESTAMP,
                   photographer_id INTEGER,
+                  base_price REAL DEFAULT 0,
+                  base_photos_included INTEGER DEFAULT 10,
+                  extra_photo_price REAL DEFAULT 0,
+                  deposit_paid REAL DEFAULT 0,
+                  selection_submitted INTEGER DEFAULT 0,
+                  submitted_at TIMESTAMP,
                   FOREIGN KEY (photographer_id) REFERENCES photographer (id))''')
-    
+
     # Photos table
     c.execute('''CREATE TABLE IF NOT EXISTS photos
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,8 +75,30 @@ def init_db():
                   original_path TEXT NOT NULL,
                   watermarked_path TEXT NOT NULL,
                   approved INTEGER DEFAULT 0,
+                  selected INTEGER DEFAULT 0,
+                  photo_number INTEGER,
                   uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                   FOREIGN KEY (session_id) REFERENCES sessions (id))''')
+
+    # Migrate existing tables — add new columns if not present
+    def _add_col(table, col, defn):
+        try:
+            c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {defn}")
+        except Exception:
+            pass
+
+    _add_col('sessions', 'base_price', 'REAL DEFAULT 0')
+    _add_col('sessions', 'base_photos_included', 'INTEGER DEFAULT 10')
+    _add_col('sessions', 'extra_photo_price', 'REAL DEFAULT 0')
+    _add_col('sessions', 'deposit_paid', 'REAL DEFAULT 0')
+    _add_col('sessions', 'selection_submitted', 'INTEGER DEFAULT 0')
+    _add_col('sessions', 'submitted_at', 'TIMESTAMP')
+    _add_col('photos', 'selected', 'INTEGER DEFAULT 0')
+    _add_col('photos', 'photo_number', 'INTEGER')
+    _add_col('photographer', 'bank_name', 'TEXT')
+    _add_col('photographer', 'bank_account', 'TEXT')
+    _add_col('photographer', 'bank_holder', 'TEXT')
+    _add_col('photographer', 'tng_qr_path', 'TEXT')
     
     # Create default photographer account if not exists
     c.execute("SELECT * FROM photographer WHERE username = 'admin'")
@@ -293,21 +322,24 @@ def logout():
 @login_required
 def dashboard():
     photographer_id = request.cookies.get('photographer_id')
-    
+
     conn = sqlite3.connect('photographer.db')
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("""SELECT s.*, COUNT(p.id) as photo_count,
-                 SUM(CASE WHEN p.approved = 1 THEN 1 ELSE 0 END) as approved_count
+                 SUM(CASE WHEN p.approved = 1 THEN 1 ELSE 0 END) as approved_count,
+                 SUM(CASE WHEN p.selected = 1 THEN 1 ELSE 0 END) as selected_count
                  FROM sessions s
                  LEFT JOIN photos p ON s.id = p.session_id
                  WHERE s.photographer_id = ?
                  GROUP BY s.id
                  ORDER BY s.created_at DESC""", (photographer_id,))
     sessions = c.fetchall()
+    c.execute("SELECT * FROM photographer WHERE id = ?", (photographer_id,))
+    pg = c.fetchone()
     conn.close()
-    
-    return render_template('dashboard.html', sessions=sessions)
+
+    return render_template('dashboard.html', sessions=sessions, pg=pg)
 
 @app.route('/session/create', methods=['GET', 'POST'])
 @login_required
@@ -317,38 +349,61 @@ def create_session():
         session_name = request.form.get('session_name')
         customer_name = request.form.get('customer_name')
         customer_email = request.form.get('customer_email')
+        base_price = float(request.form.get('base_price') or 0)
+        base_photos_included = int(request.form.get('base_photos_included') or 10)
+        extra_photo_price = float(request.form.get('extra_photo_price') or 0)
+        deposit_paid = float(request.form.get('deposit_paid') or 0)
         access_token = secrets.token_urlsafe(32)
-        
+
         conn = sqlite3.connect('photographer.db')
         c = conn.cursor()
-        c.execute("""INSERT INTO sessions (session_name, customer_name, customer_email, 
-                     access_token, photographer_id) VALUES (?, ?, ?, ?, ?)""",
-                  (session_name, customer_name, customer_email, access_token, photographer_id))
+        c.execute("""INSERT INTO sessions (session_name, customer_name, customer_email,
+                     access_token, photographer_id, base_price, base_photos_included,
+                     extra_photo_price, deposit_paid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  (session_name, customer_name, customer_email, access_token, photographer_id,
+                   base_price, base_photos_included, extra_photo_price, deposit_paid))
         session_id = c.lastrowid
         conn.commit()
         conn.close()
-        
+
         flash('Session created successfully!', 'success')
         return redirect(url_for('manage_session', session_id=session_id))
-    
+
     return render_template('create_session.html')
 
 @app.route('/session/<int:session_id>')
 @login_required
 def manage_session(session_id):
+    photographer_id = request.cookies.get('photographer_id')
     conn = sqlite3.connect('photographer.db')
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))
     session = c.fetchone()
-    c.execute("SELECT * FROM photos WHERE session_id = ? ORDER BY uploaded_at DESC", (session_id,))
+    c.execute("SELECT * FROM photos WHERE session_id = ? ORDER BY photo_number ASC, uploaded_at ASC", (session_id,))
     photos = c.fetchall()
+    c.execute("SELECT * FROM photographer WHERE id = ?", (photographer_id,))
+    pg = c.fetchone()
     conn.close()
-    
-    # Generate customer link
+
     customer_link = url_for('customer_view', token=session['access_token'], _external=True)
-    
-    return render_template('manage_session.html', session=session, photos=photos, customer_link=customer_link)
+
+    # Calculate balance if selection submitted
+    balance_due = None
+    extra_cost = 0
+    selected_photos = [p for p in photos if p['selected'] == 1]
+    if session['selection_submitted']:
+        n = len(selected_photos)
+        included = session['base_photos_included'] or 0
+        extra = max(0, n - included)
+        extra_cost = extra * (session['extra_photo_price'] or 0)
+        total = (session['base_price'] or 0) + extra_cost
+        balance_due = total - (session['deposit_paid'] or 0)
+
+    return render_template('manage_session.html', session=session, photos=photos,
+                           customer_link=customer_link, pg=pg,
+                           selected_photos=selected_photos, balance_due=balance_due,
+                           extra_cost=extra_cost)
 
 @app.route('/session/<int:session_id>/regenerate_watermarks', methods=['POST'])
 @login_required
@@ -389,21 +444,21 @@ def upload_photos(session_id):
     
     conn = sqlite3.connect('photographer.db')
     c = conn.cursor()
-    
+
+    # Get current max photo_number for this session
+    c.execute("SELECT COALESCE(MAX(photo_number), 0) FROM photos WHERE session_id = ?", (session_id,))
+    next_number = c.fetchone()[0] + 1
+
     for file in files:
         if file and allowed_file(file.filename):
-            # Generate unique filename
             filename = secure_filename(file.filename)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S%f')
             unique_filename = f"{timestamp}_{filename}"
-            
-            # Absolute paths for file operations
+
             original_abs = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
             file.save(original_abs)
 
-            # Relative paths (from project root) stored in DB for URL generation
             original_rel = f"static/uploads/{unique_filename}"
-
             watermarked_filename = f"wm_{unique_filename}"
             watermarked_abs = os.path.join(app.config['WATERMARK_FOLDER'], watermarked_filename)
             watermarked_rel = f"static/watermarked/{watermarked_filename}"
@@ -413,12 +468,12 @@ def upload_photos(session_id):
                 watermarked_rel = original_rel
                 print(f"WARNING: Watermark failed for {filename}, using original as preview")
 
-            # Save relative paths to database
-            c.execute("""INSERT INTO photos (session_id, filename, original_path, watermarked_path)
-                         VALUES (?, ?, ?, ?)""",
-                      (session_id, filename, original_rel, watermarked_rel))
+            c.execute("""INSERT INTO photos (session_id, filename, original_path, watermarked_path, photo_number)
+                         VALUES (?, ?, ?, ?, ?)""",
+                      (session_id, filename, original_rel, watermarked_rel, next_number))
+            next_number += 1
             uploaded_count += 1
-    
+
     conn.commit()
     conn.close()
     
@@ -524,6 +579,59 @@ def approve_all(session_id):
     
     return redirect(url_for('manage_session', session_id=session_id))
 
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    photographer_id = request.cookies.get('photographer_id')
+    conn = sqlite3.connect('photographer.db')
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    if request.method == 'POST':
+        bank_name = request.form.get('bank_name', '')
+        bank_account = request.form.get('bank_account', '')
+        bank_holder = request.form.get('bank_holder', '')
+
+        # Handle QR upload
+        tng_qr_path = None
+        if 'tng_qr' in request.files:
+            qr_file = request.files['tng_qr']
+            if qr_file and qr_file.filename:
+                qr_dir = os.path.join(app.config['UPLOAD_FOLDER'], '..', 'qr')
+                os.makedirs(qr_dir, exist_ok=True)
+                qr_filename = secure_filename(qr_file.filename)
+                qr_abs = os.path.join(qr_dir, qr_filename)
+                qr_file.save(qr_abs)
+                tng_qr_path = f"static/qr/{qr_filename}"
+
+        if tng_qr_path:
+            c.execute("""UPDATE photographer SET bank_name=?, bank_account=?, bank_holder=?, tng_qr_path=?
+                         WHERE id=?""", (bank_name, bank_account, bank_holder, tng_qr_path, photographer_id))
+        else:
+            c.execute("""UPDATE photographer SET bank_name=?, bank_account=?, bank_holder=?
+                         WHERE id=?""", (bank_name, bank_account, bank_holder, photographer_id))
+        conn.commit()
+        flash('Payment settings saved!', 'success')
+
+    c.execute("SELECT * FROM photographer WHERE id = ?", (photographer_id,))
+    pg = c.fetchone()
+    conn.close()
+    return render_template('settings.html', pg=pg)
+
+
+@app.route('/session/<int:session_id>/approve_selected', methods=['POST'])
+@login_required
+def approve_selected(session_id):
+    conn = sqlite3.connect('photographer.db')
+    c = conn.cursor()
+    c.execute("UPDATE photos SET approved = 1 WHERE session_id = ? AND selected = 1", (session_id,))
+    count = c.rowcount
+    conn.commit()
+    conn.close()
+    flash(f'{count} selected photos approved for download!', 'success')
+    return redirect(url_for('manage_session', session_id=session_id))
+
+
 # Customer-facing routes
 @app.route('/view/<token>')
 def customer_view(token):
@@ -532,15 +640,102 @@ def customer_view(token):
     c = conn.cursor()
     c.execute("SELECT * FROM sessions WHERE access_token = ?", (token,))
     session = c.fetchone()
-    
+
     if not session:
         return "Invalid access link", 404
-    
-    c.execute("SELECT * FROM photos WHERE session_id = ? ORDER BY uploaded_at DESC", (session['id'],))
+
+    c.execute("SELECT * FROM photos WHERE session_id = ? ORDER BY photo_number ASC, uploaded_at ASC", (session['id'],))
     photos = c.fetchall()
+    c.execute("SELECT * FROM photographer WHERE id = ?", (session['photographer_id'],))
+    pg = c.fetchone()
     conn.close()
-    
-    return render_template('customer_view.html', session=session, photos=photos)
+
+    return render_template('customer_view.html', session=session, photos=photos, pg=pg)
+
+
+@app.route('/view/<token>/toggle_select/<int:photo_id>', methods=['POST'])
+def toggle_select(token, photo_id):
+    conn = sqlite3.connect('photographer.db')
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM sessions WHERE access_token = ?", (token,))
+    session = c.fetchone()
+    if not session or session['selection_submitted']:
+        conn.close()
+        return jsonify({'error': 'Not allowed'}), 403
+
+    c.execute("SELECT selected FROM photos WHERE id = ? AND session_id = ?", (photo_id, session['id']))
+    photo = c.fetchone()
+    if not photo:
+        conn.close()
+        return jsonify({'error': 'Not found'}), 404
+
+    new_state = 0 if photo['selected'] else 1
+    c.execute("UPDATE photos SET selected = ? WHERE id = ?", (new_state, photo_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'selected': new_state})
+
+
+@app.route('/view/<token>/submit_selection', methods=['POST'])
+def submit_selection(token):
+    conn = sqlite3.connect('photographer.db')
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM sessions WHERE access_token = ?", (token,))
+    session = c.fetchone()
+
+    if not session:
+        conn.close()
+        return "Invalid link", 404
+
+    if session['selection_submitted']:
+        conn.close()
+        return redirect(url_for('invoice', token=token))
+
+    c.execute("SELECT COUNT(*) FROM photos WHERE session_id = ? AND selected = 1", (session['id'],))
+    count = c.fetchone()[0]
+
+    if count == 0:
+        conn.close()
+        flash('Please select at least one photo before submitting.', 'error')
+        return redirect(url_for('customer_view', token=token))
+
+    c.execute("UPDATE sessions SET selection_submitted = 1, submitted_at = ? WHERE access_token = ?",
+              (datetime.now(), token))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('invoice', token=token))
+
+
+@app.route('/view/<token>/invoice')
+def invoice(token):
+    conn = sqlite3.connect('photographer.db')
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM sessions WHERE access_token = ?", (token,))
+    session = c.fetchone()
+
+    if not session:
+        conn.close()
+        return "Invalid link", 404
+
+    c.execute("SELECT * FROM photos WHERE session_id = ? AND selected = 1 ORDER BY photo_number ASC", (session['id'],))
+    selected_photos = c.fetchall()
+    c.execute("SELECT * FROM photographer WHERE id = ?", (session['photographer_id'],))
+    pg = c.fetchone()
+    conn.close()
+
+    n = len(selected_photos)
+    included = session['base_photos_included'] or 0
+    extra = max(0, n - included)
+    extra_cost = extra * (session['extra_photo_price'] or 0)
+    total = (session['base_price'] or 0) + extra_cost
+    balance_due = total - (session['deposit_paid'] or 0)
+
+    return render_template('invoice.html', session=session, selected_photos=selected_photos,
+                           pg=pg, n=n, included=included, extra=extra,
+                           extra_cost=extra_cost, total=total, balance_due=balance_due)
 
 @app.route('/download/<int:photo_id>')
 def download_photo(photo_id):

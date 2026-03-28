@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Settings - Photographer Portal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <h1>📸 Photographer Portal</h1>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">← Back to Dashboard</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="page-header">
+            <h2>Payment Settings</h2>
+        </div>
+
+        <div class="form-container">
+            <form method="POST" enctype="multipart/form-data">
+                <h3 style="margin-bottom:1.5rem; color:#667eea;">Bank Transfer Details</h3>
+
+                <div class="form-group">
+                    <label for="bank_name">Bank Name</label>
+                    <input type="text" id="bank_name" name="bank_name"
+                           value="{{ pg['bank_name'] or '' }}"
+                           placeholder="e.g., Maybank, CIMB, Public Bank">
+                </div>
+
+                <div class="form-group">
+                    <label for="bank_holder">Account Holder Name</label>
+                    <input type="text" id="bank_holder" name="bank_holder"
+                           value="{{ pg['bank_holder'] or '' }}"
+                           placeholder="Full name as per bank account">
+                </div>
+
+                <div class="form-group">
+                    <label for="bank_account">Account Number</label>
+                    <input type="text" id="bank_account" name="bank_account"
+                           value="{{ pg['bank_account'] or '' }}"
+                           placeholder="e.g., 1234567890">
+                </div>
+
+                <hr style="margin: 2rem 0; border-color:#e0e6ed;">
+                <h3 style="margin-bottom:1.5rem; color:#667eea;">Touch & Go QR Code</h3>
+
+                {% if pg['tng_qr_path'] %}
+                    <div style="margin-bottom:1.5rem;">
+                        <p style="font-size:0.9rem; color:#7f8c8d; margin-bottom:0.5rem;">Current QR Code:</p>
+                        <img src="{{ url_for('static', filename=pg['tng_qr_path'].replace('static/', '')) }}"
+                             style="max-width:200px; border-radius:8px; border:1px solid #e0e6ed;">
+                    </div>
+                {% endif %}
+
+                <div class="form-group">
+                    <label for="tng_qr">Upload Touch & Go QR Code Image</label>
+                    <input type="file" id="tng_qr" name="tng_qr" accept="image/*"
+                           style="padding:0.5rem; border:2px solid #e0e6ed; border-radius:8px; width:100%;">
+                    <small>Upload a screenshot or photo of your TnG QR code</small>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save Settings</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

@@ -13,34 +13,64 @@
             <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">← Back to Dashboard</a>
         </div>
     </nav>
-    
+
     <div class="container">
         <div class="page-header">
             <h2>Create New Session</h2>
         </div>
-        
+
         <div class="form-container">
             <form method="POST">
+                <h3 style="margin-bottom:1.5rem; color:#667eea;">Customer Details</h3>
+
                 <div class="form-group">
                     <label for="session_name">Session Name *</label>
-                    <input type="text" id="session_name" name="session_name" 
-                           placeholder="e.g., Wedding - John & Jane" required>
-                    <small>A descriptive name for this photo session</small>
+                    <input type="text" id="session_name" name="session_name"
+                           placeholder="e.g., Erwin & Eunice Wedding" required>
                 </div>
-                
+
                 <div class="form-group">
                     <label for="customer_name">Customer Name *</label>
-                    <input type="text" id="customer_name" name="customer_name" 
-                           placeholder="e.g., John Smith" required>
+                    <input type="text" id="customer_name" name="customer_name"
+                           placeholder="e.g., Erwin" required>
                 </div>
-                
+
                 <div class="form-group">
                     <label for="customer_email">Customer Email (optional)</label>
-                    <input type="email" id="customer_email" name="customer_email" 
+                    <input type="email" id="customer_email" name="customer_email"
                            placeholder="customer@example.com">
-                    <small>Optional - for your reference</small>
                 </div>
-                
+
+                <hr style="margin: 2rem 0; border-color:#e0e6ed;">
+                <h3 style="margin-bottom:1.5rem; color:#667eea;">Pricing Package</h3>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                    <div class="form-group">
+                        <label for="base_price">Base Package Price (RM) *</label>
+                        <input type="number" id="base_price" name="base_price"
+                               placeholder="e.g., 388" step="0.01" min="0" required>
+                        <small>Total package price</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="base_photos_included">Photos Included *</label>
+                        <input type="number" id="base_photos_included" name="base_photos_included"
+                               placeholder="e.g., 10" min="1" value="10" required>
+                        <small>How many edited photos in package</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="extra_photo_price">Extra Photo Price (RM) *</label>
+                        <input type="number" id="extra_photo_price" name="extra_photo_price"
+                               placeholder="e.g., 35" step="0.01" min="0" required>
+                        <small>Per photo beyond package limit</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="deposit_paid">Deposit Collected (RM)</label>
+                        <input type="number" id="deposit_paid" name="deposit_paid"
+                               placeholder="e.g., 150" step="0.01" min="0" value="0">
+                        <small>Deposit already paid by customer</small>
+                    </div>
+                </div>
+
                 <div class="form-actions">
                     <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Cancel</a>
                     <button type="submit" class="btn btn-primary">Create Session</button>
